@@ -1,12 +1,14 @@
 """Các provider cùng một interface. Không chứa agent loop."""
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 import uuid
 
 CONFIG = {
     'openai': ('OPENAI_API_KEY', 'https://api.openai.com/v1/chat/completions'),
+    'deepseek': ('DEEPSEEK_API_KEY', 'https://api.deepseek.com/chat/completions'),
     'gemini': ('GEMINI_API_KEY', 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'),
     'openrouter': ('OPENROUTER_API_KEY', 'https://openrouter.ai/api/v1/chat/completions'),
     'opencode-go': ('OPENCODE_GO_API_KEY', 'https://opencode.ai/inference/go/openai/v1/chat/completions'),
@@ -16,14 +18,25 @@ CONFIG = {
 
 def post_json(url, headers, payload):
     req = urllib.request.Request(url, data=json.dumps(payload).encode(), headers={'Content-Type': 'application/json', **headers})
-    try:
-        with urllib.request.urlopen(req, timeout=60) as response:
-            return json.load(response)
-    except urllib.error.HTTPError as exc:
-        # Do not print response bodies: they may contain account or request data.
-        raise RuntimeError(f'Provider trả HTTP {exc.code}; kiểm tra model, key và quota.') from exc
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f'Không kết nối được provider: {exc.reason}') from exc
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=60) as response:
+                return json.load(response)
+        except urllib.error.HTTPError as exc:
+            # Eval gọi nhiều lượt liên tiếp; chờ có giới hạn khi provider báo
+            # rate limit thay vì biến case thành unscored ngay lập tức.
+            if exc.code == 429 and attempt < 2:
+                try:
+                    delay = float(exc.headers.get('Retry-After', ''))
+                except (TypeError, ValueError):
+                    delay = 15.0 * (attempt + 1)
+                if delay <= 30.0:
+                    time.sleep(max(1.0, delay))
+                    continue
+            # Do not print response bodies: they may contain account or request data.
+            raise RuntimeError(f'Provider trả HTTP {exc.code}; kiểm tra model, key và quota.') from exc
+        except urllib.error.URLError as exc:
+            raise RuntimeError(f'Không kết nối được provider: {exc.reason}') from exc
 
 
 class Provider:
@@ -49,8 +62,16 @@ class Provider:
         if self.name == 'anthropic':
             return self._anthropic(messages, schemas)
         payload = {'model': self.model, 'messages': messages}
+        # DeepSeek bật thinking mặc định. Tắt reasoning để tiết kiệm token và
+        # dùng tool calling theo cấu hình được tài liệu DeepSeek khuyến nghị.
+        if self.name == 'deepseek':
+            payload['reasoning_effort'] = 'none'
         if schemas:
             payload['tools'] = schemas
+            # GPT-6 Luna chỉ hỗ trợ function calling qua Chat Completions khi
+            # reasoning_effort được đặt thành "none".
+            if self.name == 'openai' and self.model in {'gpt-6-luna', 'gpt-5.6-luna'}:
+                payload['reasoning_effort'] = 'none'
         headers = {'Authorization': f'Bearer {self.key}'}
         if self.name == 'opencode-go':
             headers.update({'User-Agent': 'StatusAgentLab/1.0', 'x-opencode-session': self.session_id})

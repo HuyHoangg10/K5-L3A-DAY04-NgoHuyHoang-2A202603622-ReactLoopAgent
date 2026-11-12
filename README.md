@@ -42,7 +42,7 @@ Sau bài chính, bạn có thể mở rộng agent để điều tra **GitHub, C
 
 ## 1. Chuẩn bị
 
-- Python **3.10+**, có Internet và API key của **một** trong năm provider.
+- Python **3.10+**, có Internet và API key của **một** trong sáu provider.
 - Chọn model có hỗ trợ **tool calling**. API provider/model có thể phát sinh chi phí.
 - Không cần cài package: project dùng Python standard library.
 
@@ -60,6 +60,7 @@ Chọn cấu hình khác nếu cần:
 | `PROVIDER` | Biến chứa key | `MODEL` |
 |---|---|---|
 | `openai` | `OPENAI_API_KEY` | Tên model OpenAI bạn được cấp quyền dùng. |
+| `deepseek` | `DEEPSEEK_API_KEY` | `deepseek-flash`; adapter trực tiếp dùng API tương thích OpenAI. |
 | `gemini` | `GEMINI_API_KEY` | Tên model Gemini hỗ trợ function calling. |
 | `anthropic` | `ANTHROPIC_API_KEY` | Tên model Claude hỗ trợ tool use. |
 | `openrouter` | `OPENROUTER_API_KEY` | Model ID đầy đủ trên OpenRouter, thường có dạng `provider/model`. |
